@@ -166,7 +166,7 @@ const logoutUser = asyncHandler(async (req, res) => {
   await User.findByIdAndUpdate(req.user._id),
     {
       $unset: {
-        refreshToken: 1 // this removes the field from the documrnt
+        refreshToken: 1, // this removes the field from the documrnt
       },
     },
     {
@@ -270,7 +270,7 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
     {
       $set: {
         fullName,
-        email,
+        email: email,
       },
     },
     { new: true }
@@ -287,6 +287,8 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
   if (!avatarLocalPath) {
     throw new ApiError(400, "Avatar file is missing");
   }
+
+  //TODO: delete old image - assignment
 
   const avatar = await uploadOnCloudinary(avatarLocalPath);
 
@@ -306,20 +308,22 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
 
   return res
     .status(200)
-    .json(new ApiResponse(200, user, "Cover image updated successfully"));
+    .json(new ApiResponse(200, user, "Avatar image updated successfully"));
 });
 
-const updateUserCoverAvatar = asyncHandler(async (req, res) => {
+const updateUserCoverImage = asyncHandler(async (req, res) => {
   const coverImageLocalPath = req.file?.path;
 
   if (!coverImageLocalPath) {
     throw new ApiError(400, "Cover image file is missing");
   }
 
+  //TODO: delete old image - assignment
+
   const coverImage = await uploadOnCloudinary(coverImageLocalPath);
 
   if (!coverImage.url) {
-    throw new ApiError(400, "Error while uploading the cover Image");
+    throw new ApiError(400, "Error while uploading on avatar");
   }
 
   const user = await User.findByIdAndUpdate(
@@ -362,7 +366,7 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
       $lookup: {
         from: "subscriptions",
         localField: "_id",
-        foreignField: "subscribers",
+        foreignField: "subscriber",
         as: "subscribedTo",
       },
     },
@@ -371,13 +375,12 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
         subscribersCount: {
           $size: "$subscribers",
         },
-
         channelsSubscribedToCount: {
           $size: "$subscribedTo",
         },
         isSubscribed: {
           $cond: {
-            if: { $in: [req.user?._id, "subscribers.subscriber"] },
+            if: { $in: [req.user?._id, "$subscribers.subscriber"] },
             then: true,
             else: false,
           },
@@ -399,7 +402,7 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
   ]);
 
   if (!channel?.length) {
-    throw new ApiError(404, "Channel does not exists");
+    throw new ApiError(404, "channel does not exists");
   }
 
   return res
@@ -420,7 +423,7 @@ const getWatchHistory = asyncHandler(async (req, res) => {
       $lookup: {
         from: "videos",
         localField: "watchHistory",
-        foreignField: _id,
+        foreignField: "_id",
         as: "watchHistory",
         pipeline: [
           {
@@ -452,15 +455,16 @@ const getWatchHistory = asyncHandler(async (req, res) => {
     },
   ]);
 
-  res.status(200)
-  .status(200)
-  .json(
-    new ApiResponse(
-      200,
-      user[0].watchHistory,
-      "Watch History fetched successfully"
-    )
-  )
+  res
+    .status(200)
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        user[0].watchHistory,
+        "Watch History fetched successfully"
+      )
+    );
 });
 
 export {
@@ -472,7 +476,7 @@ export {
   getCurrentUser,
   updateAccountDetails,
   updateUserAvatar,
-  updateUserCoverAvatar,
+  updateUserCoverImage,
   getUserChannelProfile,
-  getWatchHistory
+  getWatchHistory,
 };
