@@ -16,7 +16,7 @@ const userSchema = new Schema(
       type: String,
       required: true,
       unique: true,
-      lowecase: true,
+      lowercase: true,
       trim: true,
     },
     fullName: {
@@ -26,11 +26,15 @@ const userSchema = new Schema(
       index: true,
     },
     avatar: {
-      type: String, // cloudinary url
+      type: String, //cloudinary url
       required: true,
     },
     coverImage: {
-      type: String, // cloudinary url
+      type: String,
+    },
+    description: {
+      type: String,
+      default: "",
     },
     watchHistory: [
       {
@@ -46,9 +50,7 @@ const userSchema = new Schema(
       type: String,
     },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
 userSchema.pre("save", async function (next) {
@@ -68,7 +70,7 @@ userSchema.methods.generateAccessToken = function () {
       _id: this._id,
       email: this.email,
       username: this.username,
-      fullName: this.fullName,
+      fullname: this.fullname,
     },
     process.env.ACCESS_TOKEN_SECRET,
     {

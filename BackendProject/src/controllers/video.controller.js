@@ -1,10 +1,14 @@
-import mongoose, { isValidObjectId } from "mongoose";
-import { Video } from "../models/video.model.js";
-import { User } from "../models/user.model.js";
+import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
-import { asyncHandler } from "../utils/asyncHandler.js";
-import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import mongoose, { isValidObjectId } from "mongoose";
+import {
+  deleteFromCloudinary,
+  uploadOnCloudinary,
+} from "../utils/cloudinary.js";
+import { Video } from "../models/video.model.js";
+import { User } from "../models/user.model.js";
+import fs from "fs";
 import { Subscription } from "../models/subscription.model.js";
 
 function unlinkPath(videoLocalPath, thumbnailLocalPath) {
@@ -13,7 +17,13 @@ function unlinkPath(videoLocalPath, thumbnailLocalPath) {
 }
 
 const getAllVideos = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 10, query, sortBy, sortType, userId } = req.query;
+  const {
+    page = 1,
+    limit = 10,
+    query,
+    sortBy = "createdAt",
+    sortType = "desc",
+  } = req.query;
 
   const videos = await Video.aggregate([
     ...(query
@@ -85,13 +95,14 @@ const getAllVideos = asyncHandler(async (req, res) => {
       $limit: parseInt(limit),
     },
   ]);
+
   if (!videos) {
-    throw new ApiError(404, "No video found");
+    throw new ApiError(404, "No videos found");
   }
 
   return res
     .status(200)
-    .json(new ApiResponse(200, videos, "Video fetched successfully"));
+    .json(new ApiResponse(200, videos, "Videos fetched successfully"));
 });
 
 const getUserVideos = asyncHandler(async (req, res) => {
@@ -161,8 +172,9 @@ const getUserVideos = asyncHandler(async (req, res) => {
       },
     },
   ]);
+
   if (!videos) {
-    throw new ApiError(404, "Error while fetching video");
+    throw new ApiError(404, "Error while fetching videos");
   }
 
   return res
@@ -184,6 +196,7 @@ const getSubscribedVideos = asyncHandler(async (req, res) => {
       .status(200)
       .json(new ApiResponse(200, [], "No subscribed channels found"));
   }
+
   const videos = await Video.aggregate([
     {
       $match: {
@@ -274,14 +287,14 @@ const publishAVideo = asyncHandler(async (req, res) => {
 
   if (!thumbnailLocalPath) {
     unlinkPath(videoLocalPath, thumbnailLocalPath);
-    throw new ApiError(400, "Thumbnail file is required");
+    throw new ApiError(400, "Thumbnail is required");
   }
 
   const videoFile = await uploadOnCloudinary(videoLocalPath);
   const thumbnail = await uploadOnCloudinary(thumbnailLocalPath);
 
-  if (!videoFile || !thumbnailLocalPath) {
-    throw new ApiError(404, "Video or thumbnail file is missing ");
+  if (!videoFile || !thumbnail) {
+    throw new ApiError(400, "Video or thumbnail file is missing");
   }
 
   const video = await Video.create({
@@ -299,11 +312,12 @@ const publishAVideo = asyncHandler(async (req, res) => {
 
   return res
     .status(200)
-    .json(new ApiResponse(200, video, "Video upload successfully"));
+    .json(new ApiResponse(200, video, "Video uploaded successfully"));
 });
 
 const getVideoById = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
+
   if (!videoId || !mongoose.isValidObjectId(videoId)) {
     throw new ApiError(400, "Invalid video Id");
   }
@@ -311,14 +325,14 @@ const getVideoById = asyncHandler(async (req, res) => {
   const video = await Video.aggregate([
     {
       $match: {
-        _id: mongoose.Types.ObjectId(videoId),
+        _id: new mongoose.Types.ObjectId(videoId),
       },
     },
     {
       $lookup: {
         from: "likes",
         localField: "_id",
-        foreignField: "videoId",
+        foreignField: "video",
         as: "likes",
       },
     },
@@ -404,7 +418,7 @@ const getVideoById = asyncHandler(async (req, res) => {
   ]);
 
   if (!video.length) {
-    throw new ApiError(404, "Video Does not exist");
+    throw new ApiError(404, "Video does not exists");
   }
 
   await Video.findByIdAndUpdate(videoId, {
@@ -415,17 +429,18 @@ const getVideoById = asyncHandler(async (req, res) => {
 
   await User.findByIdAndUpdate(req.user?._id, {
     $addToSet: {
-      watchedHistory: videoId,
+      watchHistory: videoId,
     },
   });
+
   return res
     .status(200)
     .json(new ApiResponse(200, video[0], "Video fetched successfully"));
 });
 
 const updateVideo = asyncHandler(async (req, res) => {
-  const { videoId } = req.params;
   const { title, description } = req.body;
+  const { videoId } = req.params;
   const thumbnailLocalPath = req.file?.path;
 
   if (!videoId || !isValidObjectId(videoId)) {
@@ -457,7 +472,7 @@ const updateVideo = asyncHandler(async (req, res) => {
     thumbnail = await uploadOnCloudinary(thumbnailLocalPath);
 
     if (!thumbnail) {
-      throw new ApiError(400, "Error while uploading on Cloudinary");
+      throw new ApiError(400, "Error while uploading thumbnail on Cloudinary");
     } else {
       const thumbnailUrl = video?.thumbnail;
       const regex = /\/([^/]+)\.[^.]+$/;
@@ -466,6 +481,7 @@ const updateVideo = asyncHandler(async (req, res) => {
       if (!match) {
         throw new ApiError(400, "Couldn't find Public ID of old thumbnail");
       }
+
       const publicId = match[1];
       await deleteFromCloudinary(publicId);
     }
@@ -504,18 +520,19 @@ const deleteVideo = asyncHandler(async (req, res) => {
   if (!video) {
     throw new ApiError(404, "Video not found");
   }
-  if (video?.owner.toString() !== req.user?._id) {
+
+  if (video?.owner.toString() !== req.user?._id.toString()) {
     throw new ApiError(401, "You do not have permission to delete this video");
   }
 
   await Video.findByIdAndDelete(videoId);
 
-  const thumbnailUrl = videoId?.thumbnail;
+  const thumbnailUrl = video?.thumbnail;
   const videoFileUrl = video?.videoFile;
   const regex = /\/([^/]+)\.[^.]+$/;
   let match = thumbnailUrl.match(regex);
   if (!match) {
-    throw new ApiError(400, "Couldn't find public ID of thumbnail");
+    throw new ApiError(400, "Couldn't find Public ID of thumbnail");
   }
 
   let publicId = match[1];
@@ -523,7 +540,7 @@ const deleteVideo = asyncHandler(async (req, res) => {
 
   match = videoFileUrl.match(regex);
   if (!match) {
-    throw new ApiError(400, "Couldn't find public ID of video");
+    throw new ApiError(400, "Couldn't find Public ID of video");
   }
 
   publicId = match[1];
@@ -532,8 +549,9 @@ const deleteVideo = asyncHandler(async (req, res) => {
   if (deleteThumbnail.result !== "ok") {
     throw new ApiError(500, "Error while deleting thumbnail from Cloudinary");
   }
+
   if (deleteVideoFile.result !== "ok") {
-    throw new ApiError(500, "Error while deleting Video from Cloudinary");
+    throw new ApiError(500, "Error while deleting video from Cloudinary");
   }
 
   return res
@@ -543,9 +561,8 @@ const deleteVideo = asyncHandler(async (req, res) => {
 
 const togglePublishStatus = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
-
   if (!videoId || !isValidObjectId(videoId)) {
-    throw new ApiError(400, "Invalid video ID");
+    throw new ApiError(400, "Invalid video Id");
   }
 
   const video = await Video.findById(videoId);
@@ -559,6 +576,7 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
       "You do not have permission to perform this action"
     );
   }
+
   const updatedVideo = await Video.findByIdAndUpdate(
     videoId,
     {
@@ -568,6 +586,7 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
       new: true,
     }
   );
+
   return res
     .status(200)
     .json(

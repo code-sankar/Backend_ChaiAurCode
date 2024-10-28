@@ -1,15 +1,15 @@
-import mongoose, { isValidObjectId } from "mongoose";
-import { Comment } from "../models/comment.model.js";
+import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
-import { asyncHandler } from "../utils/asyncHandler.js";
+import { Comment } from "../models/comment.model.js";
+import mongoose, { isValidObjectId } from "mongoose";
 
 const getVideoComments = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
   const { page = 1, limit = 10 } = req.query;
 
   if (!videoId || !isValidObjectId(videoId)) {
-    throw new ApiError(400, "It's not a valid video Id");
+    throw new ApiError(400, "No valid video Id found");
   }
 
   const getComments = await Comment.aggregate([
@@ -88,8 +88,9 @@ const getVideoComments = asyncHandler(async (req, res) => {
       },
     },
   ]);
+
   if (!getComments) {
-    throw new ApiError(501, "Error whiel fetching comments");
+    throw new ApiError(501, "Error while fetching comments");
   }
 
   return res
@@ -102,24 +103,26 @@ const addComment = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
 
   if (!content?.trim()) {
-    throw new ApiError(400, "Comment can't be empty");
+    throw new ApiError(400, "Comment cannot be empty");
   }
+
   if (!videoId || !isValidObjectId(videoId)) {
     throw new ApiError(400, "Invalid Video Id");
   }
 
   const comment = await Comment.create({
     content,
-    Video: videoId,
+    video: videoId,
     owner: req.user?._id,
   });
 
   if (!comment) {
     throw new ApiError(500, "Error while adding comment");
   }
+
   return res
     .status(200)
-    .json(new ApiResponse(200, "Comment added successfully"));
+    .json(new ApiResponse(200, comment, "Comment added successfully"));
 });
 
 const updateComment = asyncHandler(async (req, res) => {
@@ -131,7 +134,7 @@ const updateComment = asyncHandler(async (req, res) => {
   }
 
   if (!commentId || !isValidObjectId(commentId)) {
-    throw new ApiError(400, "Invalid Comment Id");
+    throw new ApiError(400, "Invalid comment Id");
   }
 
   const comment = await Comment.findById(commentId);
@@ -141,10 +144,13 @@ const updateComment = asyncHandler(async (req, res) => {
   }
 
   if (comment.owner.toString() !== req.user?._id.toString()) {
-    throw new ApiError(401, "You do not have permission to update the comment");
+    throw new ApiError(
+      401,
+      "You do not have permission to update this comment"
+    );
   }
 
-  const updateComment = await Comment.findByIdAndUpdate(
+  const updatedComment = await Comment.findByIdAndUpdate(
     commentId,
     {
       $set: { content },
@@ -154,22 +160,21 @@ const updateComment = asyncHandler(async (req, res) => {
     }
   );
 
-  if (!updateComment) {
-    throw new ApiError(400, "Error while handling comment");
+  if (!updatedComment) {
+    throw new ApiError(400, "Error while updating comment");
   }
 
   return res
     .status(200)
-    .json(new ApiResponse(200, updateComment, "Comment updated successfully"));
+    .json(new ApiResponse(200, updatedComment, "Comment updated successfully"));
 });
 
 const deleteComment = asyncHandler(async (req, res) => {
   const { commentId } = req.params;
 
   if (!commentId || !isValidObjectId(commentId)) {
-    throw new ApiError(400, "Invalid Comment ID");
+    throw new ApiError(400, "Invalid comment Id");
   }
-
   const comment = await Comment.findById(commentId);
 
   if (!comment) {
@@ -183,15 +188,15 @@ const deleteComment = asyncHandler(async (req, res) => {
     );
   }
 
-  const deleteComment = await Comment.findByIdAndDelete(commentId);
+  const deletedComment = await Comment.findByIdAndDelete(commentId);
 
-  if (!deleteComment) {
+  if (!deletedComment) {
     throw new ApiError(400, "Error while deleting comment");
   }
 
   return res
     .status(200)
-    .json(new ApiResponse(200, "Comment deleted successfully"));
+    .json(new ApiResponse(200, deletedComment, "Comment deleted successfully"));
 });
 
 export { getVideoComments, addComment, updateComment, deleteComment };

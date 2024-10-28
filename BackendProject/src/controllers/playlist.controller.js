@@ -1,8 +1,9 @@
-import mongoose, { isValidObjectId } from "mongoose";
-import { Playlist } from "../models/playlist.model.js";
+import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
-import { asyncHandler } from "../utils/asyncHandler.js";
+import mongoose, { isValidObjectId } from "mongoose";
+import { Playlist } from "../models/playlist.model.js";
+import { Video } from "../models/video.model.js";
 
 const createPlaylist = asyncHandler(async (req, res) => {
   const { name, description } = req.body;
@@ -13,7 +14,7 @@ const createPlaylist = asyncHandler(async (req, res) => {
 
   const playlist = await Playlist.create({
     name,
-    description: description || " ",
+    description: description || "",
     owner: req.user?._id,
   });
 
@@ -23,20 +24,20 @@ const createPlaylist = asyncHandler(async (req, res) => {
 
   return res
     .status(200)
-    .json(new ApiResponse(200, "Playlist created successfully"));
+    .json(new ApiResponse(200, playlist, "Playlist created successfully"));
 });
 
 const getUserPlaylists = asyncHandler(async (req, res) => {
   const { userId } = req.params;
 
   if (!userId || !isValidObjectId(userId)) {
-    throw new ApiError(400, "User id not valid");
+    throw new ApiError(400, "User Id is not valid");
   }
 
   const playlists = await Playlist.aggregate([
     {
       $match: {
-        owner: new mongoose.Types.body(userId),
+        owner: new mongoose.Types.ObjectId(userId),
       },
     },
     {
@@ -85,7 +86,7 @@ const getUserPlaylists = asyncHandler(async (req, res) => {
         owner: 1,
         thumbnail: 1,
         createdAt: 1,
-        updatedat: 1,
+        updatedAt: 1,
         thumbnail: {
           $first: "$videos.thumbnail",
         },
@@ -105,14 +106,14 @@ const getUserPlaylists = asyncHandler(async (req, res) => {
 
   return res
     .status(200)
-    .json(new ApiResponse(200, "Playlist fetched sucessfully"));
+    .json(new ApiResponse(200, playlists, "Playlists fetched successfully"));
 });
 
 const getPlaylistById = asyncHandler(async (req, res) => {
   const { playlistId } = req.params;
 
   if (!playlistId || !isValidObjectId(playlistId)) {
-    throw new ApiError(400, "Invalid playlist Id");
+    throw new ApiError(400, "Invalid Playlist Id");
   }
 
   const playlist = await Playlist.aggregate([
@@ -129,9 +130,7 @@ const getPlaylistById = asyncHandler(async (req, res) => {
         as: "videos",
         pipeline: [
           {
-            $match: {
-              isPublished: true,
-            },
+            $match: { isPublished: true },
           },
           {
             $lookup: {
@@ -199,7 +198,6 @@ const getPlaylistById = asyncHandler(async (req, res) => {
         totalViews: {
           $sum: "$videos.views",
         },
-
         createdAt: 1,
         updatedAt: 1,
       },
@@ -216,14 +214,14 @@ const getPlaylistById = asyncHandler(async (req, res) => {
 });
 
 const addVideoToPlaylist = asyncHandler(async (req, res) => {
-  const { playlistId, videoId } = req.params;
+  const { videoId, playlistId } = req.params;
 
   if (!playlistId || !isValidObjectId(playlistId)) {
-    throw new ApiError(400, "Invalid playlist Id");
+    throw new ApiError(400, "Invalid playlist id");
   }
 
   if (!videoId || !isValidObjectId(videoId)) {
-    throw new ApiError(400, "Invalid video Id");
+    throw new ApiError(400, "Invalid video id");
   }
 
   const playlist = await Playlist.findById(playlistId);
@@ -231,7 +229,7 @@ const addVideoToPlaylist = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Playlist not found");
   }
 
-  const video = await Playlist.findById(videoId);
+  const video = await Video.findById(videoId);
   if (!video) {
     throw new ApiError(400, "Video not found");
   }
@@ -239,7 +237,7 @@ const addVideoToPlaylist = asyncHandler(async (req, res) => {
   if (playlist?.owner.toString() !== req.user?._id.toString()) {
     throw new ApiError(
       401,
-      "You do not have permission to perform this action"
+      "you do not have permission to perform this action"
     );
   }
 
@@ -256,6 +254,7 @@ const addVideoToPlaylist = asyncHandler(async (req, res) => {
     },
     { new: true }
   );
+
   if (!addToPlaylist) {
     throw new ApiError(500, "Error while adding video to playlist");
   }
@@ -266,27 +265,28 @@ const addVideoToPlaylist = asyncHandler(async (req, res) => {
       new ApiResponse(
         200,
         addToPlaylist,
-        "video added to playlist successfully"
+        "Video added to playlist successfully"
       )
     );
 });
 
 const removeVideoFromPlaylist = asyncHandler(async (req, res) => {
-  const { playlistId, videoId } = req.params;
+  const { videoId, playlistId } = req.params;
+
   if (!playlistId || !isValidObjectId(playlistId)) {
-    throw new ApiError(400, "Invalid Playlist id");
+    throw new ApiError(400, "Invalid playlist id");
   }
 
   if (!videoId || !isValidObjectId(videoId)) {
-    throw new ApiError(400, "Invalid Video id");
+    throw new ApiError(400, "Invalid video id");
   }
 
   const playlist = await Playlist.findById(playlistId);
   if (!playlist) {
-    throw new ApiError(400, "playlist not found");
+    throw new ApiError(400, "Playlist not found");
   }
 
-  const video = await Playlist.findById(videoId);
+  const video = await Video.findById(videoId);
   if (!video) {
     throw new ApiError(400, "Video not found");
   }
@@ -294,12 +294,12 @@ const removeVideoFromPlaylist = asyncHandler(async (req, res) => {
   if (playlist?.owner.toString() !== req.user?._id.toString()) {
     throw new ApiError(
       401,
-      "You do not have permission to perform this action"
+      "you do not have permission to perform this action"
     );
   }
 
   if (!playlist.videos.includes(videoId)) {
-    throw new ApiError(400, "Video is not in playlist");
+    throw new ApiError(400, "Video not in playlist");
   }
 
   const removeVideo = await Playlist.findByIdAndUpdate(
@@ -327,26 +327,27 @@ const removeVideoFromPlaylist = asyncHandler(async (req, res) => {
       new ApiResponse(
         200,
         removeVideo,
-        "Video removed from Playlist Successfully"
+        "video removed from playlist successfully"
       )
     );
 });
 
 const deletePlaylist = asyncHandler(async (req, res) => {
   const { playlistId } = req.params;
+
   if (!playlistId || !isValidObjectId(playlistId)) {
     throw new ApiError(400, "Invalid playlist id");
   }
 
   const playlist = await Playlist.findById(playlistId);
   if (!playlist) {
-    throw new ApiError(400, "playlist not found");
+    throw new ApiError(400, "Playlist not found");
   }
 
   if (playlist?.owner.toString() !== req.user?._id.toString()) {
     throw new ApiError(
       401,
-      "You do not have permission to perform this action"
+      "you do not have permission to perform this action"
     );
   }
 
@@ -381,7 +382,7 @@ const updatePlaylist = asyncHandler(async (req, res) => {
   if (playlist?.owner.toString() !== req.user?._id.toString()) {
     throw new ApiError(
       401,
-      "You do not have permission to perform this action"
+      "you do not have permission to perform this action"
     );
   }
 
@@ -435,13 +436,14 @@ const getVideoPlaylist = asyncHandler(async (req, res) => {
       },
     },
   ]);
+
   if (!playlists) {
-    throw new ApiError(500, "Error while fetching playlist");
+    throw new ApiError(500, "Error while fetching playlists");
   }
 
   return res
     .status(200)
-    .json(new ApiResponse(200, playlists, "Playlist fetchded successfully"));
+    .json(new ApiResponse(200, playlists, "Playlists fetched successfully"));
 });
 
 export {

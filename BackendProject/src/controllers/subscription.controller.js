@@ -1,19 +1,18 @@
-import mongoose, { isValidObjectId } from "mongoose";
-import { User } from "../models/user.model.js";
-import { Subscription } from "../models/subscription.model.js";
+import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
-import { asyncHandler } from "../utils/asyncHandler.js";
+import mongoose, { isValidObjectId } from "mongoose";
+import { Subscription } from "../models/subscription.model.js";
 
 const toggleSubscription = asyncHandler(async (req, res) => {
   const { channelId } = req.params;
 
   if (!channelId || !isValidObjectId(channelId)) {
-    throw new ApiError(400, "Invalid Channel id");
+    throw new ApiError(400, "Channel Id is not valid");
   }
 
   if (channelId.toString() === req.user?._id.toString()) {
-    throw new ApiError(403, "cannot subscribe to your own channel");
+    throw new ApiError(403, "Cannot subscribe to your own channel");
   }
 
   const isSubscribed = await Subscription.findOne({
@@ -22,7 +21,8 @@ const toggleSubscription = asyncHandler(async (req, res) => {
   });
 
   if (isSubscribed) {
-    const unsubscribe = await Subscription.findByIdAndUpdate(isSubscribed);
+    const unsubscribe = await Subscription.findByIdAndDelete(isSubscribed);
+
     if (!unsubscribe) {
       throw new ApiError(500, "Error while unsubscribing");
     }
@@ -31,19 +31,20 @@ const toggleSubscription = asyncHandler(async (req, res) => {
       subscriber: req.user?._id,
       channel: channelId,
     });
+
     if (!subscribe) {
       throw new ApiError(500, "Error while subscribing");
     }
   }
 
-  return res.status(200).json(new ApiResponse(200, {}, "subscription toggled"));
+  return res.status(200).json(new ApiResponse(200, {}, "Subscription toggled"));
 });
 
 const getUserChannelSubscribers = asyncHandler(async (req, res) => {
   const { channelId } = req.params;
 
   if (!channelId || !isValidObjectId(channelId)) {
-    throw new ApiError(500, "Channel id is not valid");
+    throw new ApiError(400, "Channel id is not valid");
   }
 
   const subscribers = await Subscription.aggregate([
@@ -87,8 +88,9 @@ const getUserChannelSubscribers = asyncHandler(async (req, res) => {
       },
     },
   ]);
+
   if (!subscribers) {
-    throw new ApiError(404, "Subscriber not found");
+    throw new ApiError(404, "Subscribers not found");
   }
 
   return res
@@ -102,7 +104,7 @@ const getSubscribedChannels = asyncHandler(async (req, res) => {
   const { subscriberId } = req.params;
 
   if (!subscriberId || !isValidObjectId(subscriberId)) {
-    throw new ApiError(400, "No Valid subscriber id found");
+    throw new ApiError(400, "No valid subscriber Id found");
   }
 
   const subscribedChannels = await Subscription.aggregate([
@@ -152,14 +154,14 @@ const getSubscribedChannels = asyncHandler(async (req, res) => {
     {
       $group: {
         _id: null,
-        channel: { $push: "$channelDetails" },
+        channels: { $push: "$channelDetails" },
         totalChannels: { $sum: 1 },
       },
     },
     {
       $project: {
         _id: 0,
-        channel: {
+        channels: {
           _id: 1,
           isSubscribed: 1,
           subscribersCount: 1,
@@ -171,6 +173,7 @@ const getSubscribedChannels = asyncHandler(async (req, res) => {
       },
     },
   ]);
+
   if (!subscribedChannels) {
     throw new ApiError(404, "Channels not found");
   }
@@ -181,7 +184,7 @@ const getSubscribedChannels = asyncHandler(async (req, res) => {
       new ApiResponse(
         200,
         subscribedChannels[0],
-        "Subscribed Channels fetched successfully"
+        "Subscribed channels fetched successfully"
       )
     );
 });

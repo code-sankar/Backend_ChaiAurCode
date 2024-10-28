@@ -1,13 +1,14 @@
-import mongoose, { isValidObjectId } from "mongoose";
 import { Like } from "../models/like.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import mongoose, { isValidObjectId } from "mongoose";
 
 const toggleVideoLike = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
+
   if (!videoId || !isValidObjectId(videoId)) {
-    throw new ApiError(400, "No valid video id found");
+    throw new ApiError(400, "No valid video Id found");
   }
 
   const isLiked = await Like.findOne({
@@ -59,13 +60,15 @@ const toggleCommentLike = asyncHandler(async (req, res) => {
       throw new ApiError(500, "Error while liking comment");
     }
   }
+
   return res.status(200).json(new ApiResponse(200, {}, "Like status updated"));
 });
 
 const toggleTweetLike = asyncHandler(async (req, res) => {
   const { tweetId } = req.params;
+
   if (!tweetId || !isValidObjectId(tweetId)) {
-    throw new ApiError(400, "No valid tweet id found");
+    throw new ApiError(400, "No valid tweet Id found");
   }
 
   const isLiked = await Like.findOne({
@@ -77,19 +80,18 @@ const toggleTweetLike = asyncHandler(async (req, res) => {
     const removeLike = await Like.findByIdAndDelete(isLiked._id);
     if (!removeLike) {
       throw new ApiError(500, "Error while removing like");
-    } else {
-      const liked = await Like.create({
-        tweet: tweetId,
-        likedBy: req.user?._id,
-      });
-      if (!liked) {
-        throw new ApiError(500, "Error while liking tweet");
-      }
     }
-    return res
-      .status(200)
-      .json(new ApiResponse(200, {}, "Like status updated "));
+  } else {
+    const liked = await Like.create({
+      tweet: tweetId,
+      likedBy: req.user?._id,
+    });
+    if (!liked) {
+      throw new ApiError(500, "Error while liking tweet");
+    }
   }
+
+  return res.status(200).json(new ApiResponse(200, {}, "Like status updated"));
 });
 
 const getLikedVideos = asyncHandler(async (req, res) => {
@@ -147,7 +149,7 @@ const getLikedVideos = asyncHandler(async (req, res) => {
     },
     {
       $match: {
-        video: { $exists: true },
+        video: { $exists: true }, // Filter out non-video documents
       },
     },
     {
@@ -170,8 +172,8 @@ const getLikedVideos = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(
-      new ApiResponse(200, likedVideos, "Liked video fetched successfully")
+      new ApiResponse(200, likedVideos, "Liked videos fetched successfully")
     );
 });
 
-export { toggleCommentLike, toggleTweetLike, toggleVideoLike, getLikedVideos };
+export { toggleVideoLike, toggleCommentLike, toggleTweetLike, getLikedVideos };
